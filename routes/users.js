@@ -1,95 +1,109 @@
 var express = require('express');
-const {db} = require('../db/knex.db');
+const db = require('../db/knex.db'); // db importunu kontrol edin
 const bcrypt = require('bcryptjs');
-const verifyAuth = require('./auth');
 const jwt = require('jsonwebtoken');
 var router = express.Router();
 
-
-/* GET users listing. */
-router.get('/', verifyAuth, async function(req, res, next) {
-  const user = req.user;
-  const usersData = await db('users').select('*');
-  res.json(usersData);
-});
-
-/* GET users listing. */
-router.get('/:id', async function(req, res, next) {
-  const usersData = await db('users').select('*');
-  res.json(usersData);
-});
-
-
+// Kullanıcı kayıt endpointi
 router.post('/signup', async function(req, res) {
-  const {username, password, name, surname, email, userType } = req.body;
+    const { username, password, name, surname, email, userType } = req.body;
+    if (!email || !password) {
+        return res.status(400).send({ message: 'Email or password missing' });
+    }
 
-  //userType = user || company
+    try {
+        const user = await db('users').select('*').where('email', email).first();
+        if (user) {
+            return res.status(400).send({ message: 'You already have an account' });
+        }
 
-  if (!email &&password) {
-    return res.status(400).send({
-      message: 'email or password missing',
-    });
-  };
+        const hashedPassword = await bcrypt.hash(password, 8);
+        await db('users').insert({
+            username,
+            password: hashedPassword,
+            name,
+            surname,
+            email,
+            user_type: userType // Burada `user_type` doğru isimlendirme
+        });
 
-  const user = await db('users').select('*').where('email', email).first();
-
-  console.log('USER',user);
-
-  if (user) {
-    return res.status(400).send({
-      message: 'you are already have an account',
-    })
-  };
-
-  const cryptedPassword = await bcrypt.hash(password, 8);
-
-  await db('users').insert(
-    {username, password: cryptedPassword, name, surname, email, userType } 
-  )
-
-  return res.status(201).send({
-    message: 'user has succesfully created',
-  })
+        return res.status(201).send({ message: 'User successfully created' });
+    } catch (error) {
+        return res.status(500).send({ message: 'There is an error', error: error.message });
+    }
 });
 
-router.post('/login', async function(req,res) {
+// Kullanıcı giriş endpointi
+router.post('/login', async function(req, res) {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).send({ message: 'Email or password missing' });
+    }
 
-  const {email,password} = req.body;
+    try {
+        const user = await db('users').select('*').where('email', email).first();
+        if (!user) {
+            return res.status(400).send({ message: 'No account found with given email' });
+        }
 
-  if (!email || !password) {
-    return res.status(400).send({
-      message: 'email or password is missing',
-    })
-  };
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).send('Email or password is wrong');
+        }
 
-  const user = await db('users').select('*').where('email', email).first();
+        const token = jwt.sign({ email: user.email }, process.env.SECRET_KEY);
+        return res.status(200).send({
+            message: 'Successfully logged in',
+            token
+        });
+    } catch (error) {
+        return res.status(500).send({ message: 'There is an error', error: error.message });
+    }
+});
 
-  if (!user) {
-    return res.status(400).send({
-      message: 'There is no account given email'
-    })
-  };
+// Kullanıcı listeleme endpointi
+router.get('/', async function(req, res) {
+    try {
+        const usersData = await db('users').select('*');
+        res.json(usersData);
+    } catch (error) {
+        res.status(500).send({ message: 'There is an error', error: error.message });
+    }
+});
 
-  console.log('USER',user);
+// ID ile kullanıcı getirme endpointi
+router.get('/:id', async function(req, res) {
+    const user_id = req.params.id;
+    try {
+        const user = await db('users').select('*').where('id', user_id).first();
+        if (!user) {
+            return res.status(400).send({ message: 'There is no user with given ID' });
+        }
 
-  const isMatch = await bcrypt.compare(password, user.password);
+        return res.status(200).send({
+            message: 'Successful',
+            user
+        });
+    } catch (error) {
+        return res.status(500).send({ message: 'There is an error', error: error.message });
+    }
+});
 
-  if (!isMatch) {
-    return res.status.send('email or password is wrong')
-  }
+// Kullanıcı hesabı silme endpointi
+router.delete('/delete/:id', async (req, res) => {
+    const user_id = req.params.id;
 
-  const token = jwt.sign({email: email }, process.env.SECRET_KEY);
+    try {
+        const user = await db('users').select('*').where('id', user_id).first();
+        if (!user) {
+            return res.status(400).send({ message: 'There is no user with given ID' });
+        }
 
-  return res.status(200).send({
-    message: 'succesfully logged in',
-    token
-  })
-
-})
-
-//asynchronous
-// async - await
-// Promise
-// callback
+        await db('users').where('id', user_id).del();
+        return res.status(200).send({ message: 'Your account has been deleted successfully' });
+    } catch (error) {
+        return res.status(500).send({ message: 'An error occurred while deleting the account', error: error.message });
+    }
+});
 
 module.exports = router;

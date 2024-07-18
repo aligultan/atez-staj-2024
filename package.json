@@ -17,5 +17,13 @@
     "knex": "^3.1.0",
     "morgan": "~1.9.1",
     "mysql2": "^3.10.3"
+  },
+  "description": "User management =>login, /signup\r verifyAuth => jwt token authentication",
+  "main": "app.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }
